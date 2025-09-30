@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Penghitung Gaji - Absensi</title>
+  <!-- Font Google -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <!-- XLSX Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- jsPDF AutoTable -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: #f7f9fc;
+      margin: 0;
+      padding: 0;
+      color: #333;
+    }
+    .container {
+      max-width: 900px;
+      margin: auto;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #2a5d9f;
+      text-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    input[type="file"], button {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 8px;
+      margin: 10px 5px;
+      font-size: 14px;
+    }
+    button {
+      background: #2a5d9f;
+      color: white;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    button:hover {
+      background: #1e4474;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    .table-container {
+      overflow-x: auto;
+      margin-top: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    th, td {
+      padding: 10px;
+      text-align: center;
+      border-bottom: 1px solid #eee;
+    }
+    th {
+      background: #2a5d9f;
+      color: white;
+    }
+    @media (max-width: 600px) {
+      h1 {
+        font-size: 20px;
+      }
+      button, input[type="file"] {
+        width: 100%;
+        margin: 5px 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Penghitung Gaji - Absensi</h1>
+    <input type="file" id="upload" accept=".xlsx, .xls">
+    <button onclick="proses()">Hitung Gaji</button>
+    <button onclick="downloadPDF()">Download PDF</button>
+
+    <div class="table-container">
+      <table id="hasil">
+        <thead>
+          <tr>
+            <th>No</th>
+            <th>Nama</th>
+            <th>Total Jam</th>
+            <th>Total Hari</th>
+            <th>Gaji (Rp)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let workbook;
+    let hasilData = [];
+
+    document.getElementById('upload').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const data = new Uint8Array(event.target.result);
+        workbook = XLSX.read(data, { type: 'array' });
+        alert("File berhasil dimuat!");
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    function hitungJam(cell) {
+      if (!cell) return 0;
+      if (cell === "✓") return 8; // hadir penuh
+      if (cell.toLowerCase() === "x") return 0; // alpa
+      let jamMasuk = cell.match(/B(\d+)/);
+      let jamPulang = cell.match(/P(\d+)/);
+      if (jamMasuk && jamPulang) {
+        return parseInt(jamPulang[1]) - parseInt(jamMasuk[1]);
+      }
+      return 0;
+    }
+
+    function proses() {
+      if (!workbook) {
+        alert("Upload file absensi dulu!");
+        return;
+      }
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+      const tbody = document.querySelector("#hasil tbody");
+      tbody.innerHTML = "";
+      hasilData = [];
+
+      data.forEach((row, index) => {
+        let totalJam = 0;
+        let totalHari = 0;
+        Object.keys(row).forEach(k => {
+          if (!isNaN(k)) { // kolom tanggal
+            let jam = hitungJam(row[k]);
+            totalJam += jam;
+            if (jam > 0) totalHari++;
+          }
+        });
+
+        let gaji = totalJam * 12500; // Rp 20.000 per jam
+
+        hasilData.push([
+          row["No"] || index+1,
+          row["Nama"] || "-",
+          totalJam,
+          totalHari,
+          gaji.toLocaleString("id-ID")
+        ]);
+
+        let tr = `<tr>
+          <td>${row["No"] || index+1}</td>
+          <td>${row["Nama"] || "-"}</td>
+          <td>${totalJam}</td>
+          <td>${totalHari}</td>
+          <td>${gaji.toLocaleString("id-ID")}</td>
+        </tr>`;
+        tbody.innerHTML += tr;
+      });
+    }
+
+    function downloadPDF() {
+      if (hasilData.length === 0) {
+        alert("Hitung gaji dulu sebelum download PDF!");
+        return;
+      }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("Rekap Gaji Karyawan", 105, 15, { align: "center" });
+
+      doc.autoTable({
+        head: [["No", "Nama", "Total Jam", "Total Hari", "Gaji (Rp)"]],
+        body: hasilData,
+        startY: 25,
+        theme: "grid"
+      });
+
+      doc.save("Rekap_Gaji.pdf");
+    }
+  </script>
+</body>
+</html>
